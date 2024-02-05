@@ -16,6 +16,13 @@ void u16_to_be(u8* out, u16 in) {
     out[1] = (u8) (in >> 0);
 }
 
+void u32_to_be(u8* out, u32 in) {
+    out[0] = (u8) (in >> 24);
+    out[1] = (u8) (in >> 16);
+    out[2] = (u8) (in >> 8);
+    out[3] = (u8) (in >> 0);
+}
+
 void u64_to_be(u8* out, u64 in) {
     out[0] = (u8) (in >> 56);
     out[1] = (u8) (in >> 48);
@@ -43,12 +50,68 @@ u32 be_to_u32(u8* in) {
     );
 }
 
-u32 le_to_32(u8* in) {
+u64 be_to_u64(u8* in) {
+    return (
+        (u64) in[0] << 56 |
+        (u64) in[1] << 48 |
+        (u64) in[2] << 40 |
+        (u64) in[3] << 32 |
+        (u64) in[0] << 24 |
+        (u64) in[1] << 16 |
+        (u64) in[2] << 8  |
+        (u64) in[3] << 0 
+    );
+}
+
+void u16_to_le(u8* out, u16 in) {
+    out[0] = (u8) (in >> 0);
+    out[1] = (u8) (in >> 8);
+}
+
+void u32_to_le(u8* out, u32 in) {
+    out[0] = (u8) (in >> 0);
+    out[1] = (u8) (in >> 8);
+    out[2] = (u8) (in >> 16);
+    out[3] = (u8) (in >> 24);
+}
+
+void u64_to_le(u8* out, u64 in) {
+    out[0] = (u8) (in >> 0);
+    out[1] = (u8) (in >> 8);
+    out[2] = (u8) (in >> 16);
+    out[3] = (u8) (in >> 24);
+    out[4] = (u8) (in >> 32);
+    out[5] = (u8) (in >> 40);
+    out[6] = (u8) (in >> 48);
+    out[7] = (u8) (in >> 56);
+}
+
+u16 le_to_u16(u8* in) {
+    return (
+        (u16) in[0] << 0  |
+        (u16) in[1] << 8  |
+    );
+}
+
+u32 le_to_u32(u8* in) {
     return (
         (u32) in[0] << 0  |
         (u32) in[1] << 8  |
         (u32) in[2] << 16 |
         (u32) in[3] << 24
+    );
+}
+
+u64 le_to_u64(u8* in) {
+    return (
+        (u64) in[0] << 0  |
+        (u64) in[1] << 8  |
+        (u64) in[2] << 16 |
+        (u64) in[3] << 24 |
+        (u64) in[3] << 32 |
+        (u64) in[3] << 40 |
+        (u64) in[3] << 48 |
+        (u64) in[3] << 56
     );
 }
 
