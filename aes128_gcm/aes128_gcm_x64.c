@@ -3,29 +3,6 @@
 
 #include "aes128_gcm_x86-64.h"
 
-// This should compile to single bswap instructions with optimization.
-u32 swap_endian_u32(u32 a) {
-    return (
-        a >> 24 & 0x000000ff |
-        a >> 8  & 0x0000ff00 |
-        a << 8  & 0x00ff0000 |
-        a << 24 & 0xff000000
-    );
-}
-
-u64 swap_endian_u64(u64 a) {
-    return (
-        a >> 56 & 0x00000000000000ff |
-        a >> 40 & 0x000000000000ff00 |
-        a >> 24 & 0x0000000000ff0000 |
-        a >> 8  & 0x00000000ff000000 |
-        a << 8  & 0x000000ff00000000 |
-        a << 24 & 0x0000ff0000000000 |
-        a << 40 & 0x00ff000000000000 |
-        a << 56 & 0xff00000000000000
-    );
-}
-
 slice_u8_u32 aes128_gcm_encrypt(
     slice_u8_u32 plaintext, 
     t16_u8 key, 

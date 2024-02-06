@@ -11,6 +11,28 @@ u32 rol(u32 in, u32 count) {
     return in << count | in >> (32 - count);
 }
 
+u32 endian_swap_u32(u32 in) {
+    return (
+        in >> 24 & 0x000000ff |
+        in >> 8  & 0x0000ff00 |
+        in << 8  & 0x00ff0000 |
+        in << 24 & 0xff000000
+    );
+}
+
+u64 endian_swap_u64(u64 in) {
+    return (
+        in >> 56 & 0x00000000000000ff |
+        in >> 40 & 0x000000000000ff00 |
+        in >> 24 & 0x0000000000ff0000 |
+        in >> 8  & 0x00000000ff000000 |
+        in << 8  & 0x000000ff00000000 |
+        in << 24 & 0x0000ff0000000000 |
+        in << 40 & 0x00ff000000000000 |
+        in << 56 & 0xff00000000000000
+    );
+}
+
 void u16_to_be(u8* out, u16 in) {
     out[0] = (u8) (in >> 8);
     out[1] = (u8) (in >> 0);
