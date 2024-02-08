@@ -109,14 +109,14 @@ void u64_to_le(u8* out, u64 in) {
 }
 
 u16 le_to_u16(u8* in) {
-    return (
-        (u16) in[0] << 0  |
-        (u16) in[1] << 8  |
+    return (u16) (
+        (u16) in[0] << 0 |
+        (u16) in[1] << 8 
     );
 }
 
 u32 le_to_u32(u8* in) {
-    return (
+    return (u32) (
         (u32) in[0] << 0  |
         (u32) in[1] << 8  |
         (u32) in[2] << 16 |
@@ -125,7 +125,7 @@ u32 le_to_u32(u8* in) {
 }
 
 u64 le_to_u64(u8* in) {
-    return (
+    return (u64) (
         (u64) in[0] << 0  |
         (u64) in[1] << 8  |
         (u64) in[2] << 16 |
