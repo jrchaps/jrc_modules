@@ -8,7 +8,7 @@ if "%1"=="dev" (
     -g -Xlinker /INCREMENTAL:NO ^
     -march=native ^
     -O0 ^
-    -D slices_with_bounds_checking ^
+    -D slice_bounds_checking ^
     -Weverything ^
     -Wno-newline-eof ^
     -Wno-unused-variable ^
@@ -24,6 +24,7 @@ if "%1"=="dev" (
     -Wno-extra-semi ^
     -Wno-extra-semi-stmt ^
     -Wno-conditional-uninitialized ^
+    -Wno-declaration-after-statement ^
     -Wno-bitwise-op-parentheses
 ) 
 
