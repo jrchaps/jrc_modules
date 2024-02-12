@@ -25,6 +25,8 @@ if "%1"=="dev" (
     -Wno-extra-semi-stmt ^
     -Wno-conditional-uninitialized ^
     -Wno-declaration-after-statement ^
+    -Wno-strict-prototypes ^
+    -Wno-unsafe-buffer-usage ^
     -Wno-bitwise-op-parentheses
 ) 
 
