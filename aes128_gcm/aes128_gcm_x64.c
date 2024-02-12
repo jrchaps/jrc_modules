@@ -1,151 +1,47 @@
-#ifndef aes128_gcm_intrinsics_h
-#define aes128_gcm_intrinsics_h
+#ifndef aes128_gcm_x64_h
+#define aes128_gcm_x64_h
 
-#include "aes128_gcm_x86-64.h"
+#include "aes128_gcm_x64.h"
 
-slice_u8_u32 aes128_gcm_encrypt(
-    slice_u8_u32 plaintext, 
-    t16_u8 key, 
-    t12_u8 nonce, 
-    slice_u8_u32 auth
-) {
-
-    t16_u8 auth_tag = aes128_gcm_xcrypt(
-        plaintext,
-        key,
-        nonce,
-        auth,
-        true
-    );
-
-    _mm_storeu_si128((__m128i*) (plaintext.items + plaintext.length), auth_tag.t1);
-    plaintext.length += 16;
-
-    return plaintext;
+#define aes128_get_round_key(out, key, round_constant) {           \
+    __m128i temp = _mm_aeskeygenassist_si128(key, round_constant); \
+    __m128i temp2;                                                 \
+    temp = _mm_shuffle_epi32(temp, 0xff);                          \
+    temp2 = _mm_slli_si128(key, 0x4);                              \
+    key = _mm_xor_si128(key, temp2);                               \
+    temp2 = _mm_slli_si128(temp2, 0x4);                            \
+    key = _mm_xor_si128(key, temp2);                               \
+    temp2 = _mm_slli_si128(temp2, 0x4);                            \
+    key = _mm_xor_si128(key, temp2);                               \
+    key = _mm_xor_si128(key, temp);                                \
+    out = key;                                                     \
 }
 
-aes128_gcm_decrypt_result aes128_gcm_decrypt(
-    slice_u8_u32 ciphertext, 
-    t16_u8 key, 
-    t12_u8 nonce, 
-    slice_u8_u32 auth, 
-    t16_u8 auth_tag
-) {
-
-    t16_u8 real_auth_tag = aes128_gcm_xcrypt(
-        ciphertext,
-        key,
-        nonce,
-        auth,
-        false
-    );
-
-    u64 is_authentic;
-    __m128i neq = _mm_xor_si128(real_auth_tag.t1, auth_tag.t1);
-    if(_mm_test_all_zeros(neq, neq)) {
-        is_authentic = true;
-    }
-    else {
-        is_authentic = false;
-    }
-
-    return (aes128_gcm_decrypt_result) { is_authentic, ciphertext };
+void aes128_get_round_keys(__m128i out[11], u8 initial_key[16]) {
+    __m128i key = _mm_loadu_si128((void*) initial_key);
+    out[0] = key;
+    aes128_get_round_key(out[1], key, 0x01);
+    aes128_get_round_key(out[2], key, 0x02);
+    aes128_get_round_key(out[3], key, 0x04);
+    aes128_get_round_key(out[4], key, 0x08);
+    aes128_get_round_key(out[5], key, 0x10);
+    aes128_get_round_key(out[6], key, 0x20);
+    aes128_get_round_key(out[7], key, 0x40);
+    aes128_get_round_key(out[8], key, 0x80);
+    aes128_get_round_key(out[9], key, 0x1b);
+    aes128_get_round_key(out[10], key, 0x36);
 }
 
-t16_u8 aes128_gcm_xcrypt(
-    slice_u8_u32 xtext,
-    t16_u8 key,
-    t12_u8 nonce,
-    slice_u8_u32 auth,
-    u64 is_encrypting
-) {
+__m128i aes128_encrypt(__m128i state, __m128i round_keys[11]) {
+    state = _mm_xor_si128(state, round_keys[0]);
 
-    aes128_round_keys keys = aes128_get_round_keys(key);
-
-    t16_u8 hash_key = aes128_encrypt((t16_u8) { 0 }, keys);
-
-    t16_u8 auth_tag;
-    auth_tag.t1 = _mm_setzero_si128();
-
-    u32 block_count = auth.length / 16;
-    u32 remainder = auth.length % 16;
-    
-    for (u32 i = 0; i < block_count; i += 1) {
-        __m128i auth_block = _mm_loadu_si128((__m128i*) auth.items);
-        auth_tag.t1 = _mm_xor_si128(auth_tag.t1, auth_block);
-        auth_tag.t1 = gcm_mul(auth_tag.t1, hash_key.t1);
-        auth.items += 16;
+    for (size_t i = 1; i < 10; i += 1) {
+        state = _mm_aesenc_si128(state, round_keys[i]);
     }
 
-    if (remainder) {
-        for (u32 i = 0; i < remainder; i += 1) {
-            auth_tag.items[i] ^= auth.items[i];
-        }
-        auth_tag.t1 = gcm_mul(auth_tag.t1, hash_key.t1);
-    }
+    state = _mm_aesenclast_si128(state, round_keys[10]);
 
-    t16_u8 nonce_and_counter; 
-    nonce_and_counter.t1 = _mm_loadu_si128((__m128i*) nonce.items);
-    u32 counter = 2;
-    nonce_and_counter.t1 = _mm_insert_epi32(nonce_and_counter.t1, swap_endian_u32(counter), 3);
-    t16_u8 countertext = aes128_encrypt(nonce_and_counter, keys);
-
-    block_count = xtext.length / 16;
-    remainder = xtext.length % 16;
-
-    for (u32 i = 0; i < block_count; i += 1) {
-
-        __m128i xtext_block = _mm_loadu_si128((__m128i*) xtext.items);
-
-        if (is_encrypting) {
-            xtext_block = _mm_xor_si128(xtext_block, countertext.t1);
-            auth_tag.t1 = _mm_xor_si128(auth_tag.t1, xtext_block);
-        }
-        else {
-            auth_tag.t1 = _mm_xor_si128(auth_tag.t1, xtext_block);
-            xtext_block = _mm_xor_si128(xtext_block, countertext.t1);
-        }
-
-        _mm_storeu_si128((__m128i*) xtext.items, xtext_block);
-
-        auth_tag.t1 = gcm_mul(auth_tag.t1, hash_key.t1);
-
-        counter += 1;
-        nonce_and_counter.t1 = _mm_insert_epi32(nonce_and_counter.t1, swap_endian_u32(counter), 3);
-        countertext = aes128_encrypt(nonce_and_counter, keys);
-
-        xtext.items += 16;
-    }
-
-    if (remainder) {
-        for (u32 i = 0; i < remainder; i += 1) {
-            if (is_encrypting) {
-                xtext.items[i] ^= countertext.items[i];
-                auth_tag.items[i] ^= xtext.items[i];
-            }
-            else {
-                auth_tag.items[i] ^= xtext.items[i];
-                xtext.items[i] ^= countertext.items[i];
-            }
-        } 
-        auth_tag.t1 = gcm_mul(auth_tag.t1, hash_key.t1);
-    }
-
-    u64 length_a = swap_endian_u64(auth.length * 8);
-    u64 length_b = swap_endian_u64(xtext.length * 8);
-
-    __m128i length_a_b = _mm_cvtsi64_si128((long long) length_a);
-    length_a_b = _mm_insert_epi64(length_a_b, length_b, 1);
-    auth_tag.t1 = _mm_xor_si128(auth_tag.t1, length_a_b);
-
-    auth_tag.t1 = gcm_mul(auth_tag.t1, hash_key.t1);
-
-    nonce_and_counter.t1 = _mm_insert_epi32(nonce_and_counter.t1, swap_endian_u32(1), 3);
-    nonce_and_counter = aes128_encrypt(nonce_and_counter, keys);
-    
-    auth_tag.t1 = _mm_xor_si128(auth_tag.t1, nonce_and_counter.t1);
-
-    return auth_tag;
+    return state;
 }
 
 __m128i gcm_mul(__m128i a, __m128i b) {
@@ -205,77 +101,183 @@ __m128i gcm_mul(__m128i a, __m128i b) {
     return T3;
 }
 
-t16_u8 aes128_encrypt(t16_u8 state, aes128_round_keys keys) {
-    state.t1 = _mm_xor_si128(state.t1, keys.keys[0].t1);
+__m128i aes128_gcm_xcrypt(
+    slice xtext,
+    u8 key[16],
+    u8 nonce[12],
+    slice auth,
+    u64 is_encrypting
+) {
+    __m128i round_keys[11];
+    aes128_get_round_keys(round_keys, key);
 
-    for (u8_fast i = 1; i < 10; i += 1) {
-        state.t1 = _mm_aesenc_si128(state.t1, keys.keys[i].t1);
+    __m128i zeros = _mm_setzero_si128();
+    __m128i hash_key = aes128_encrypt(zeros, round_keys);
+
+    __m128i auth_tag = _mm_setzero_si128();
+
+    u32 block_count = (u32) auth.length / 16;
+    u32 remainder = (u32) auth.length % 16;
+    
+    for (u32 i = 0; i < block_count; i += 1) {
+        __m128i auth_block = _mm_loadu_si128((void*) auth.items);
+        auth.items += 16;
+        auth_tag = _mm_xor_si128(auth_tag, auth_block);
+        auth_tag = gcm_mul(auth_tag, hash_key);
     }
 
-    state.t1 = _mm_aesenclast_si128(state.t1, keys.keys[10].t1);
+    if (remainder) {
+        u8 partial_block[16] = { 0 };
+        for (size_t i = 0; i < remainder; i += 1) {
+            partial_block[i] = auth.items[i];
+        }
+        auth_tag = _mm_xor_si128(
+            auth_tag, 
+            _mm_loadu_si128((void*) partial_block)
+        );
 
-    return state;
+        auth_tag = gcm_mul(auth_tag, hash_key);
+    }
+
+    u32 counter = 2;
+    __m128i nonce_and_counter = _mm_setr_epi8(
+        (char) nonce[0],
+        (char) nonce[1],
+        (char) nonce[2],
+        (char) nonce[3],
+        (char) nonce[4],
+        (char) nonce[5],
+        (char) nonce[6],
+        (char) nonce[7],
+        (char) nonce[8],
+        (char) nonce[9],
+        (char) nonce[10],
+        (char) nonce[11],
+        0,
+        0,
+        0,
+        2
+    );
+
+    __m128i key_stream = aes128_encrypt(nonce_and_counter, round_keys);
+
+    block_count = (u32) xtext.length / 16;
+    remainder = (u32) xtext.length % 16;
+
+    for (u32 i = 0; i < block_count; i += 1) {
+
+        __m128i xtext_block = _mm_loadu_si128((void*) xtext.items);
+        if (is_encrypting) {
+            xtext_block = _mm_xor_si128(xtext_block, key_stream);
+            auth_tag = _mm_xor_si128(auth_tag, xtext_block);
+        }
+        else {
+            auth_tag = _mm_xor_si128(auth_tag, xtext_block);
+            xtext_block = _mm_xor_si128(xtext_block, key_stream);
+        }
+        _mm_storeu_si128((void*) xtext.items, xtext_block);
+        xtext.items += 16;
+
+        counter += 1;
+        nonce_and_counter = _mm_insert_epi32(
+            nonce_and_counter, 
+            endian_swap_u32(counter), 
+            3
+        );
+
+        key_stream = aes128_encrypt(nonce_and_counter, round_keys);
+
+        auth_tag = gcm_mul(auth_tag, hash_key);
+    }
+
+    if (remainder) {
+        u8 key_stream_items[16];
+        _mm_storeu_si128((void*) key_stream_items, key_stream);
+        u8 partial_block[16] = { 0 };
+
+        for (u32 i = 0; i < remainder; i += 1) {
+            if (is_encrypting) {
+                xtext.items[i] ^= key_stream_items[i];
+                partial_block[i] = xtext.items[i];
+            }
+            else {
+                partial_block[i] = xtext.items[i];
+                xtext.items[i] ^= key_stream_items[i];
+            }
+        }
+
+        auth_tag = _mm_xor_si128(
+            auth_tag, 
+            _mm_loadu_si128((void*) partial_block)
+        );
+
+        auth_tag = gcm_mul(auth_tag, hash_key);
+    }
+
+    __m128i length_a_b = _mm_setr_epi64(
+        (__m64) endian_swap_u64(auth.length * 8),
+        (__m64) endian_swap_u64(xtext.length * 8)
+    );
+
+    auth_tag = _mm_xor_si128(auth_tag, length_a_b);
+    auth_tag = gcm_mul(auth_tag, hash_key);
+
+    nonce_and_counter = _mm_insert_epi32(
+        nonce_and_counter, 
+        endian_swap_u32(1), 
+        3
+    );
+
+    key_stream = aes128_encrypt(nonce_and_counter, round_keys);
+    
+    auth_tag = _mm_xor_si128(auth_tag, key_stream);
+
+    return auth_tag;
 }
 
-aes128_round_keys aes128_get_round_keys(t16_u8 key) {
-    aes128_round_keys keys;
+slice aes128_gcm_encrypt(
+    slice plaintext,
+    u8 key[16],
+    u8 nonce[12],
+    slice auth
+) {
+    __m128i auth_tag = aes128_gcm_xcrypt(
+        plaintext,
+        key,
+        nonce,
+        auth,
+        true
+    );
 
-    keys.keys[0] = key;
+    _mm_storeu_si128((void*) (plaintext.items + plaintext.length), auth_tag);
+    plaintext.length += 16;
 
-    __m128i temp = _mm_aeskeygenassist_si128(key.t1, 0x01);
-    key.t1 = aes128_round_key(key.t1, temp);
-    keys.keys[1] = key;
-
-    temp = _mm_aeskeygenassist_si128(key.t1, 0x02);
-    key.t1 = aes128_round_key(key.t1, temp);
-    keys.keys[2] = key;
-
-    temp = _mm_aeskeygenassist_si128(key.t1, 0x04);
-    key.t1 = aes128_round_key(key.t1, temp);
-    keys.keys[3] = key;
-
-    temp = _mm_aeskeygenassist_si128(key.t1, 0x08);
-    key.t1 = aes128_round_key(key.t1, temp);
-    keys.keys[4] = key;
-
-    temp = _mm_aeskeygenassist_si128(key.t1, 0x10);
-    key.t1 = aes128_round_key(key.t1, temp);
-    keys.keys[5] = key;
-
-    temp = _mm_aeskeygenassist_si128(key.t1, 0x20);
-    key.t1 = aes128_round_key(key.t1, temp);
-    keys.keys[6] = key;
-
-    temp = _mm_aeskeygenassist_si128(key.t1, 0x40);
-    key.t1 = aes128_round_key(key.t1, temp);
-    keys.keys[7] = key;
-
-    temp = _mm_aeskeygenassist_si128(key.t1, 0x80);
-    key.t1 = aes128_round_key(key.t1, temp);
-    keys.keys[8] = key;
-
-    temp = _mm_aeskeygenassist_si128(key.t1, 0x1b);
-    key.t1 = aes128_round_key(key.t1, temp);
-    keys.keys[9] = key;
-
-    temp = _mm_aeskeygenassist_si128(key.t1, 0x36);
-    key.t1 = aes128_round_key(key.t1, temp);
-    keys.keys[10] = key;
-
-    return keys;
+    return plaintext;
 }
 
-__m128i aes128_round_key(__m128i temp1, __m128i temp2) {
-    __m128i temp3;
-    temp2 = _mm_shuffle_epi32(temp2, 0xff);
-    temp3 = _mm_slli_si128(temp1, 0x4);
-    temp1 = _mm_xor_si128(temp1, temp3);
-    temp3 = _mm_slli_si128(temp3, 0x4);
-    temp1 = _mm_xor_si128(temp1, temp3);
-    temp3 = _mm_slli_si128(temp3, 0x4);
-    temp1 = _mm_xor_si128(temp1, temp3);
-    temp1 = _mm_xor_si128(temp1, temp2);
-    return temp1;
+aes128_gcm_decrypt_output aes128_gcm_decrypt(
+    slice ciphertext, 
+    u8 key[16],
+    u8 nonce[12],
+    slice auth,
+    u8 auth_tag[16]
+) {
+    aes128_gcm_decrypt_output out;
+
+    __m128i real_auth_tag = aes128_gcm_xcrypt(
+        ciphertext,
+        key,
+        nonce,
+        auth,
+        false 
+    );
+
+    out.plaintext = ciphertext;
+
+    __m128i neq = _mm_xor_si128(real_auth_tag, _mm_loadu_si128((void*) auth_tag));
+    out.is_authentic = (u64) _mm_test_all_zeros(neq, neq);
+
+    return out;
 }
 
 #endif
