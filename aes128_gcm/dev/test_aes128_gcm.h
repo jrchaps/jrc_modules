@@ -1,30 +1,27 @@
-#include "Windows.h"
+#include "../../os/windows.c"
 
-#ifdef slices_with_bounds_checking
-    #define assert(expression, message) if (!(expression)) DebugBreak();
+#ifdef slice_bounds_checking
+    #define assert(expression) if (!(expression)) { DebugBreak(); }
 #endif
-#ifdef no_intrinsics
-    #include "../aes128_gcm.c"
-#else
-    #include "../aes128_gcm_x86-64.c"
-#endif
+
+#include "../aes128_gcm_x64.c"
 
 typedef struct aes128_bag aes128_bag;
 typedef struct aes128_gcm_bag aes128_gcm_bag;
 
 struct aes128_bag {
-    t16_u8 plaintext;
-    t16_u8 ciphertext;
-    t16_u8 key;
+    u8 plaintext[16];
+    u8 ciphertext[16];
+    u8 key[16];
 };
 
 struct aes128_gcm_bag {
-    slice_u8_u32 plaintext;
-    slice_u8_u32 ciphertext;
-    t16_u8 key;
-    t12_u8 nonce;
-    slice_u8_u32 auth;
-    t16_u8 auth_tag;
+    slice plaintext;
+    slice ciphertext;
+    u8 key[16];
+    u8 nonce[12];
+    slice auth;
+    u8 auth_tag[16];
 };
 
 #define aes128_bags_length 5
