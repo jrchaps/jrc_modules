@@ -1,4 +1,4 @@
-#include "test_aes128_gcm.h"
+#include "aes128_gcm_test.h"
 
 void start() {
     for (size_t i = 0; i < aes128_gcm_bags_length; i += 1) {

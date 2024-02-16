@@ -14,3 +14,7 @@ int WinMain(
     start();
     return 0;
 }
+
+void trigger_breakpoint() {
+    DebugBreak();
+}
