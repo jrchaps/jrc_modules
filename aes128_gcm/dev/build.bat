@@ -9,7 +9,7 @@ if "%1"=="dev" (
     -march=native ^
     -O0 ^
     -D slice_bounds_checking ^
-    -D aes128_gcm_x64 ^
+    -D aes128_gcm_unsafe ^
     -Weverything ^
     -Wno-newline-eof ^
     -Wno-unused-variable ^

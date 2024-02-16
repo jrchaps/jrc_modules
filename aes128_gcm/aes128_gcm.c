@@ -3,312 +3,6 @@
 
 #include "aes128_gcm.h"
 
-slice_u8_u32 aes128_gcm_encrypt(
-    slice_u8_u32 plaintext,
-    t16_u8 key,
-    t12_u8 nonce,
-    slice_u8_u32 auth
-) {
-
-    t16_u8 auth_tag = aes128_gcm_xcrypt(
-        plaintext,
-        key,
-        nonce,
-        auth,
-        true
-    );
-
-    for (u8 i = 0; i < 16; i += 1) {
-        plaintext.items[plaintext.length] = auth_tag.items[i];
-        plaintext.length += 1;
-    }
-
-    return plaintext;
-}
-
-aes128_gcm_decrypt_result aes128_gcm_decrypt(
-    slice_u8_u32 ciphertext, 
-    t16_u8 key, 
-    t12_u8 nonce, 
-    slice_u8_u32 auth, 
-    t16_u8 auth_tag
-) {
-
-    t16_u8 real_auth_tag = aes128_gcm_xcrypt(
-        ciphertext,
-        key,
-        nonce,
-        auth,
-        false
-    );
-
-    return (aes128_gcm_decrypt_result) {
-        t16_u8_equals(real_auth_tag, auth_tag),
-        ciphertext
-    }; 
-}
-
-t16_u8 aes128_gcm_xcrypt(
-    slice_u8_u32 xtext,
-    t16_u8 key,
-    t12_u8 nonce,
-    slice_u8_u32 auth,
-    u64 is_encrypting
-) {
-
-    aes128_round_keys keys = aes128_get_round_keys(key);
-    t16_u8 hash_key = aes128_encrypt((t16_u8) { 0 }, keys);
-
-    t16_u8 auth_tag = { 0 };
-
-    u32 auth_index = 0;
-    u32 auth_tag_index = 0;
-
-    while (auth_index < auth.length) {
-        auth_tag.items[auth_tag_index] ^= auth.items[auth_index];
-        auth_index += 1;
-        auth_tag_index += 1;
-        if (auth_tag_index == 16) {
-            auth_tag_index = 0;
-
-            auth_tag = gcm_mul(auth_tag, hash_key);
-        }
-    }
-
-    if (auth_tag_index) {
-        auth_tag = gcm_mul(auth_tag, hash_key);
-    }
-
-    u32 counter = 2;
-    t16_u8 nonce_and_counter = t16_u8_copy_t12_u8(nonce);
-    nonce_and_counter.t4[3] = u32_to_t4_u8_be(counter);
-    nonce_and_counter = aes128_encrypt(nonce_and_counter, keys);
-
-    u32 xtext_index = 0;
-    u32 block_index = 0;
-
-    while (xtext_index < xtext.length) {
-        if (is_encrypting) {
-            xtext.items[xtext_index] ^= nonce_and_counter.items[block_index];
-            auth_tag.items[block_index] ^= xtext.items[xtext_index];
-        }
-        else {
-            auth_tag.items[block_index] ^= xtext.items[xtext_index];
-            xtext.items[xtext_index] ^= nonce_and_counter.items[block_index];
-        }
-        xtext_index += 1;
-        block_index += 1;
-        if (block_index == 16) {
-            block_index = 0;
-
-            auth_tag = gcm_mul(auth_tag, hash_key);
-
-            counter += 1;
-            nonce_and_counter = t16_u8_copy_t12_u8(nonce);
-            nonce_and_counter.t4[3] = u32_to_t4_u8_be(counter);
-            nonce_and_counter = aes128_encrypt(nonce_and_counter, keys);
-        }
-    }
-
-    if (block_index) {
-        auth_tag = gcm_mul(auth_tag, hash_key);
-    }
-
-    t16_u8 length_a_b;
-    length_a_b.t8[0] = u64_to_t8_u8_be(auth.length * 8);
-    length_a_b.t8[1] = u64_to_t8_u8_be(xtext.length * 8);
-    auth_tag = t16_u8_xor(auth_tag, length_a_b);
-    auth_tag = gcm_mul(auth_tag, hash_key);
-
-    counter = 1;
-    nonce_and_counter = t16_u8_copy_t12_u8(nonce);
-    nonce_and_counter.t4[3] = u32_to_t4_u8_be(counter);
-    nonce_and_counter = aes128_encrypt(nonce_and_counter, keys);
-    
-    auth_tag = t16_u8_xor(auth_tag, nonce_and_counter);
-
-    return auth_tag;
-}
-
-// Multiplies a by b in the GF(2^128). 
-t16_u8 gcm_mul(t16_u8 a, t16_u8 b) {
-    t16_u8 product = { 0 };
-    u8 bit_mask = 128;
-    u8 b_index = 0;
-
-    for (u8 i = 0; i < 128; i += 1) {
-        if (b.items[b_index] & bit_mask) {
-            product = t16_u8_xor(product, a);
-        }
-
-        if (bit_mask & 0x01) {
-            bit_mask = 128;
-            b_index += 1;
-        } 
-        else bit_mask >>= 1;
-
-        u8 bit_128_is_set = (a.items[15] & 0x01);
-
-        // This tuple-16 of octets need to be right shifted as if they're a 128-bit integer. 
-        u8 prior_mask = 0;
-        for (u8 i = 0; i < 16; i += 1) {
-            u8 temp = a.items[i];
-            a.items[i] >>= 1;
-            a.items[i] |= prior_mask;
-            prior_mask = (u8) ((temp & 0x01) << 7);
-        }
-
-        if (bit_128_is_set) {
-            a.items[0] ^= 225; // 1110 0001 = R
-        }
-    }
-
-    return product;
-}
-
-t16_u8 aes128_encrypt(t16_u8 plaintext, aes128_round_keys keys) {
-
-    t16_u8 key = keys.keys[0];
-    for (u8_fast round_index = 0 ;; round_index += 1) {
-        // AddRoundKey
-        plaintext = t16_u8_xor(plaintext, key);
-
-        key = keys.keys[round_index + 1];
-
-        if (round_index == 9) break;
-
-        // SubBytes
-        plaintext = aes128_substitute(plaintext);
-
-        // ShiftRows
-        plaintext = aes128_shift_rows(plaintext);
-
-        // MixColumns
-        plaintext = aes128_mix_columns(plaintext);
-    }  
-
-    plaintext = aes128_substitute(plaintext);
-    plaintext = aes128_shift_rows(plaintext);
-    plaintext = t16_u8_xor(plaintext, key);
-
-    return plaintext;
-}
-
-aes128_round_keys aes128_get_round_keys(t16_u8 key) {
-
-    aes128_round_keys keys;
-    keys.keys[0] = key;
-    for (u8_fast round_index = 0; round_index < 10; round_index += 1) {
-        key = aes128_round_key(key, round_index);
-        keys.keys[round_index + 1] = key;
-    }
-
-    return keys;
-}
-
-t4_u8 t4_u8_rotate_right(t4_u8 in) {
-    u8 temp = in.items[0];
-    in.items[0] = in.items[1];
-    in.items[1] = in.items[2];
-    in.items[2] = in.items[3];
-    in.items[3] = temp;
-
-    return in;
-}
-
-t16_u8 aes128_round_key(t16_u8 key, u8_fast round_index) {
-    // RotWord
-    t4_u8 key_part = t4_u8_rotate_right(key.t4[3]);
-
-    // SubWord
-    key_part.items[0] = aes_substitution_box[key_part.items[0]];
-    key_part.items[1] = aes_substitution_box[key_part.items[1]];
-    key_part.items[2] = aes_substitution_box[key_part.items[2]];
-    key_part.items[3] = aes_substitution_box[key_part.items[3]];
-
-    key_part = t4_u8_xor(key_part, aes_round_constants[round_index]);
-
-    for (u8_fast i = 0; i < 4; i += 1) {
-        key_part = t4_u8_xor(key_part, key.t4[i]);
-        key.t4[i] = key_part;
-    }
-
-    return key;
-}
-
-t16_u8 aes128_substitute(t16_u8 state) {
-    for (u8_fast i = 0; i < 16; i += 1) {
-        state.items[i] = aes_substitution_box[state.items[i]];
-    }
-    return state;
-}
-
-t16_u8 aes128_shift_rows(t16_u8 state) {
-    {
-        u8 temp = state.items[1];
-        state.items[1] = state.items[5];
-        state.items[5] = state.items[9];
-        state.items[9] = state.items[13];
-        state.items[13] = temp;
-    }
-    {
-        u8 temp = state.items[2];
-        state.items[2] = state.items[10];
-        state.items[10] = temp;
-        temp = state.items[6];
-        state.items[6] = state.items[14];
-        state.items[14] = temp;
-    }
-    {
-        u8 temp = state.items[15];
-        state.items[15] = state.items[11];
-        state.items[11] = state.items[7];
-        state.items[7] = state.items[3];
-        state.items[3] = temp;
-    }
-
-    return state;
-}
-
-t16_u8 aes128_mix_columns(t16_u8 state) {
-    t16_u8 matrix = {{
-        2, 3, 1, 1,
-        1, 2, 3, 1,
-        1, 1, 2, 3,
-        3, 1, 1, 2
-    }};
-
-    t16_u8 result = { 0 };
-
-    for (u8_fast i = 0; i < 4; i += 1) {
-        for (u8_fast j = 0; j < 4; j += 1) {
-            for (u8_fast k = 0; k < 4; k += 1) {
-                result.t4[i].items[j] ^= aes_mul(
-                    state.t4[i].items[k], 
-                    matrix.t4[j].items[k]
-                );
-            }
-        }
-    }
-
-    return result;
-}
-
-u8 aes_mul(u8 a, u8 b) {
-    u8 product = 0;
-
-    for (u8_fast i = 0; i < 8; i += 1) {
-        if (b & 1) product ^= a;
-
-        u8 highest_bit_set = (a & 0x80);
-        a <<= 1;
-        if (highest_bit_set) a ^= 0x1b;
-        b >>= 1;
-    }
-
-    return product;
-}
-
 u8 aes_substitution_box[256] = {
     0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76,
     0xca, 0x82, 0xc9, 0x7d, 0xfa, 0x59, 0x47, 0xf0, 0xad, 0xd4, 0xa2, 0xaf, 0x9c, 0xa4, 0x72, 0xc0,
@@ -328,17 +22,345 @@ u8 aes_substitution_box[256] = {
     0x8c, 0xa1, 0x89, 0x0d, 0xbf, 0xe6, 0x42, 0x68, 0x41, 0x99, 0x2d, 0x0f, 0xb0, 0x54, 0xbb, 0x16
 };
 
-t4_u8 aes_round_constants[10] = {
-    { 0x01, 0, 0, 0 },
-    { 0x02, 0, 0, 0 },
-    { 0x04, 0, 0, 0 },
-    { 0x08, 0, 0, 0 },
-    { 0x10, 0, 0, 0 },
-    { 0x20, 0, 0, 0 },
-    { 0x40, 0, 0, 0 },
-    { 0x80, 0, 0, 0 },
-    { 0x1b, 0, 0, 0 },
-    { 0x36, 0, 0, 0 },
+u8 aes_round_constants[10] = {
+    0x01, 0x02, 0x04, 0x08, 0x10,
+    0x20, 0x40, 0x80, 0x1b, 0x36
 };
+
+void aes128_round_key(u8 key[16], size_t round_index) {
+    u8 key_part[4];
+
+    // RotWord
+    key_part[0] = key[13];
+    key_part[1] = key[14];
+    key_part[2] = key[15];
+    key_part[3] = key[12];
+
+    // SubWord
+    key_part[0] = aes_substitution_box[key_part[0]];
+    key_part[1] = aes_substitution_box[key_part[1]];
+    key_part[2] = aes_substitution_box[key_part[2]];
+    key_part[3] = aes_substitution_box[key_part[3]];
+
+    key_part[0] ^= aes_round_constants[round_index];
+
+    for (size_t i = 0; i < 4; i += 1) {
+        for (size_t j = 0; j < 4; j += 1) {
+            key_part[j] ^= key[i * 4 + j];
+            key[i * 4 + j] = key_part[j];
+        }
+    }
+}
+
+void aes128_get_round_keys(u8 round_keys[11][16], u8 initial_key[16]) {
+    for (size_t i = 0; i < 16; i += 1) {
+        round_keys[0][i] = initial_key[i];
+    }
+
+    for (size_t round_index = 0; round_index < 10; round_index += 1) {
+        for (size_t i = 0; i < 16; i += 1) {
+            round_keys[round_index + 1][i] = round_keys[round_index][i];
+        }
+
+        aes128_round_key(round_keys[round_index + 1], round_index);
+    }
+}
+
+void aes128_substitute(u8 state[16]) {
+    for (size_t i = 0; i < 16; i += 1) {
+        state[i] = aes_substitution_box[state[i]];
+    }
+}
+
+void aes128_shift_rows(u8 state[16]) {
+    {
+        u8 temp = state[1];
+        state[1] = state[5];
+        state[5] = state[9];
+        state[9] = state[13];
+        state[13] = temp;
+    }
+    {
+        u8 temp = state[2];
+        state[2] = state[10];
+        state[10] = temp;
+        temp = state[6];
+        state[6] = state[14];
+        state[14] = temp;
+    }
+    {
+        u8 temp = state[15];
+        state[15] = state[11];
+        state[11] = state[7];
+        state[7] = state[3];
+        state[3] = temp;
+    }
+}
+
+u8 aes_mul(u8 a, u8 b) {
+    u8 product = 0;
+
+    for (size_t i = 0; i < 8; i += 1) {
+        if (b & 1) product ^= a;
+
+        u8 highest_bit_set = (a & 0x80);
+        a <<= 1;
+        if (highest_bit_set) a ^= 0x1b;
+        b >>= 1;
+    }
+
+    return product;
+}
+
+void aes128_mix_columns(u8 state[16]) {
+    u8 matrix[16] = {
+        2, 3, 1, 1,
+        1, 2, 3, 1,
+        1, 1, 2, 3,
+        3, 1, 1, 2
+    };
+
+    u8 out[16] = { 0 };
+
+    for (size_t i = 0; i < 4; i += 1) {
+        for (size_t j = 0; j < 4; j += 1) {
+            for (size_t k = 0; k < 4; k += 1) {
+                out[i * 4 + j] ^= aes_mul(
+                    state[i * 4 + k],
+                    matrix[j * 4 + k]
+                );
+            }
+        }
+    }
+
+    for (size_t i = 0; i < 16; i += 1) {
+        state[i] = out[i];
+    }
+}
+
+void aes128_encrypt(u8 plaintext[16], u8 round_keys[11][16]) {
+    for (size_t round_index = 0 ;; round_index += 1) {
+        // AddRoundKey
+        for (size_t i = 0; i < 16; i += 1) {
+            plaintext[i] ^= round_keys[round_index][i];
+        }
+
+        if (round_index == 9) {
+            break;
+        }
+
+        // SubBytes
+        aes128_substitute(plaintext);
+
+        // ShiftRows
+        aes128_shift_rows(plaintext);
+
+        // MixColumns
+        aes128_mix_columns(plaintext);
+    }
+
+    aes128_substitute(plaintext);
+    aes128_shift_rows(plaintext);
+    for (size_t i = 0; i < 16; i += 1) {
+        plaintext[i] ^= round_keys[10][i];
+    }
+}
+
+// Multiplies a by b in the GF(2^128). 
+void gcm_mul(u8 a[16], u8 b[16]) {
+    u8 product[16] = { 0 };
+
+    u8 bit_mask = 128;
+    u8 b_index = 0;
+
+    for (u8 i = 0; i < 128; i += 1) {
+        if (b[b_index] & bit_mask) {
+            for (size_t i = 0; i < 16; i += 1) {
+                product[i] ^= a[i];
+            }
+        }
+
+        if (bit_mask & 0x01) {
+            bit_mask = 128;
+            b_index += 1;
+        }
+        else {
+            bit_mask >>= 1;
+        }
+
+        u8 bit_128_is_set = (a[15] & 0x01);
+
+        u8 prior_mask = 0;
+        for (u8 i = 0; i < 16; i += 1) {
+            u8 temp = a[i];
+            a[i] >>= 1;
+            a[i] |= prior_mask;
+            prior_mask = (u8) ((temp & 0x01) << 7);
+        }
+
+        if (bit_128_is_set) {
+            a[0] ^= 225; // 1110 0001 = R
+        }
+    }
+
+    for (size_t i = 0; i < 16; i += 1) {
+        a[i] = product[i];
+    }
+}
+
+void aes128_gcm_xcrypt(
+    slice xtext,
+    u8 key[16],
+    u8 nonce[12],
+    slice auth,
+    u8 auth_tag[16],
+    u64 is_encrypting
+) {
+    u8 round_keys[11][16];
+    aes128_get_round_keys(round_keys, key);
+
+    u8 hash_key[16] = { 0 };
+    aes128_encrypt(hash_key, round_keys);
+
+    for (size_t i = 0; i < 16; i += 1) {
+        auth_tag[i] = 0;
+    }
+
+    u32 auth_index = 0;
+    u32 auth_tag_index = 0;
+
+    while (auth_index < auth.length) {
+        auth_tag[auth_tag_index] ^= auth.items[auth_index];
+        auth_index += 1;
+        auth_tag_index += 1;
+        if (auth_tag_index == 16) {
+            auth_tag_index = 0;
+            gcm_mul(auth_tag, hash_key);
+        }
+    }
+
+    if (auth_tag_index) {
+        gcm_mul(auth_tag, hash_key);
+    }
+
+    u8 nonce_and_counter[16];
+    u32 counter = 2;
+
+    for (size_t i = 0; i < 12; i += 1) {
+        nonce_and_counter[i] = nonce[i];
+    }
+
+    u32_to_be(nonce_and_counter + 12, counter);
+
+    //u8 key_stream[16];
+    aes128_encrypt(nonce_and_counter, round_keys);
+
+    u32 xtext_index = 0;
+    u32 block_index = 0;
+
+    while (xtext_index < xtext.length) {
+        if (is_encrypting) {
+            xtext.items[xtext_index] ^= nonce_and_counter[block_index];
+            auth_tag[block_index] ^= xtext.items[xtext_index];
+        }
+        else {
+            auth_tag[block_index] ^= xtext.items[xtext_index];
+            xtext.items[xtext_index] ^= nonce_and_counter[block_index];
+        }
+        xtext_index += 1;
+        block_index += 1;
+        if (block_index == 16) {
+            block_index = 0;
+
+            gcm_mul(auth_tag, hash_key);
+
+            counter += 1;
+
+            for (size_t i = 0; i < 12; i += 1) {
+                nonce_and_counter[i] = nonce[i];
+            }
+
+            u32_to_be(nonce_and_counter + 12, counter);
+
+            aes128_encrypt(nonce_and_counter, round_keys);
+        }
+    }
+
+    if (block_index) {
+        gcm_mul(auth_tag, hash_key);
+    }
+
+    u8 length_a_b[16];
+    u64_to_be(length_a_b, auth.length * 8);
+    u64_to_be(length_a_b + 8, xtext.length * 8);
+
+    for (size_t i = 0; i < 16; i += 1) {
+        auth_tag[i] ^= length_a_b[i];
+    }
+
+    gcm_mul(auth_tag, hash_key);
+
+    counter = 1;
+
+    for (size_t i = 0; i < 12; i += 1) {
+        nonce_and_counter[i] = nonce[i];
+    }
+
+    u32_to_be(nonce_and_counter + 12, counter);
+
+    aes128_encrypt(nonce_and_counter, round_keys);
+
+    for (size_t i = 0; i < 16; i += 1) {
+        auth_tag[i] ^= nonce_and_counter[i];
+    }
+}
+
+slice aes128_gcm_encrypt(
+    slice plaintext,
+    u8 key[16],
+    u8 nonce[12],
+    slice auth
+) {
+    u8 auth_tag[16];
+    aes128_gcm_xcrypt(
+        plaintext,
+        key,
+        nonce,
+        auth,
+        auth_tag,
+        true
+    );
+
+    for (u8 i = 0; i < 16; i += 1) {
+        plaintext.items[plaintext.length] = auth_tag[i];
+        plaintext.length += 1;
+    }
+
+    return plaintext;
+}
+
+aes128_gcm_decrypt_output aes128_gcm_decrypt(
+    slice ciphertext, 
+    u8 key[16], 
+    u8 nonce[12], 
+    slice auth, 
+    u8 auth_tag[16]
+) {
+    u8 real_auth_tag[16];
+    aes128_gcm_xcrypt(
+        ciphertext,
+        key,
+        nonce,
+        auth,
+        real_auth_tag,
+        false
+    );
+
+    aes128_gcm_decrypt_output out;
+    out.is_authentic = (u64) arrays_equal(real_auth_tag, auth_tag, 16);
+    out.plaintext = ciphertext;
+
+    return out;
+}
 
 #endif
