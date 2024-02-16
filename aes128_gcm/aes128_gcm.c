@@ -252,7 +252,6 @@ void aes128_gcm_xcrypt(
 
     u32_to_be(nonce_and_counter + 12, counter);
 
-    //u8 key_stream[16];
     aes128_encrypt(nonce_and_counter, round_keys);
 
     u32 xtext_index = 0;
