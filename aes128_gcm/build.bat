@@ -4,7 +4,7 @@ echo Building...
 
 if "%1"=="dev" (
     clang ^
-    %2.c -o temp/%2.exe ^
+    %2.c -o %2.exe ^
     -g -Xlinker /INCREMENTAL:NO ^
     -march=native ^
     -O0 ^

@@ -1,11 +1,11 @@
-#include "../../os/windows.c"
+#include "../os/windows.c"
 
 #define assert(expression) if (!(expression)) { DebugBreak(); }
 
 #if defined aes128_gcm_x64 
-    #include "../aes128_gcm_x64.c"
+    #include "aes128_gcm_x64.c"
 #elif defined aes128_gcm_unsafe
-    #include "../aes128_gcm.c"
+    #include "aes128_gcm.c"
 #endif
 
 typedef struct aes128_bag aes128_bag;
