@@ -1,15 +1,13 @@
 #include "chacha20_poly1305_test.h"
 
 void start() {
-
     test group = tests[0];
-    slice plaintext = slice_alloc(114);
-    plaintext = slice_copy(plaintext, group.plaintext);
+    slice plaintext = slice_alloc(114 + 16);
+    plaintext = copy(plaintext, group.plaintext);
     chacha20_poly1305_encrypt(plaintext, group.key, group.nonce, group.auth);
     assert(slices_equal(plaintext, group.ciphertext));
-    chacha20_poly1305_decrypt(group.ciphertext, group.key, group.nonce, group.auth);
+    chacha20_poly1305_decrypt(group.ciphertext, group.key, group.nonce, group.auth, group.auth_tag);
     assert(slices_equal(group.ciphertext, group.plaintext));
-
 }
 
 test tests[1] = {

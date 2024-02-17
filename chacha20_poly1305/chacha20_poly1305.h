@@ -1,6 +1,4 @@
 #include "../basic/basic.c"
-#include "../slice/slice.c"
-#include "../string/string.c"
 
 typedef struct poly1305_ctx poly1305_ctx;
 

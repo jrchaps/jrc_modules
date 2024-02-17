@@ -131,20 +131,20 @@ void chacha20_block(u8 key_stream[64], u8 key[32], u8 nonce[12], u32 counter) {
     state[2] = 0x79622d32;
     state[3] = 0x6b206574;
 
-    state[4] = le_to_32(&key[0]);
-    state[5] = le_to_32(&key[4]);
-    state[6] = le_to_32(&key[8]);
-    state[7] = le_to_32(&key[12]);
-    state[8] = le_to_32(&key[16]);
-    state[9] = le_to_32(&key[20]);
-    state[10] = le_to_32(&key[24]);
-    state[11] = le_to_32(&key[28]);
+    state[4] = le_to_u32(&key[0]);
+    state[5] = le_to_u32(&key[4]);
+    state[6] = le_to_u32(&key[8]);
+    state[7] = le_to_u32(&key[12]);
+    state[8] = le_to_u32(&key[16]);
+    state[9] = le_to_u32(&key[20]);
+    state[10] = le_to_u32(&key[24]);
+    state[11] = le_to_u32(&key[28]);
 
     state[12] = counter; // to little_endian?
 
-    state[13] = le_to_32(&nonce[0]);
-    state[14] = le_to_32(&nonce[4]);
-    state[15] = le_to_32(&nonce[8]);
+    state[13] = le_to_u32(&nonce[0]);
+    state[14] = le_to_u32(&nonce[4]);
+    state[15] = le_to_u32(&nonce[8]);
 
     u32 state_old[16];
 
