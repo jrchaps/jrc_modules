@@ -1,7 +1,15 @@
 #include <Windows.h>
-#include "ntstatus.h"
+#include <ntstatus.h>
 #include <bcrypt.h>
 #pragma comment (lib, "Bcrypt.lib")
+
+#if defined slice_bounds_checking
+    #define assert(expression) if (!(expression)) { DebugBreak(); }
+#else
+    #define assert(...)
+#endif
+
+#include "../basic/basic.c"
 
 void start(void);
 
@@ -13,6 +21,16 @@ int WinMain(
 ) {
     start();
     return 0;
+}
+
+void crypto_random(u8* out, u32 length) {
+    NTSTATUS status = BCryptGenRandom(
+        NULL,
+        out,
+        length,
+        BCRYPT_USE_SYSTEM_PREFERRED_RNG
+    );
+    assert(status == STATUS_SUCCESS);
 }
 
 void trigger_breakpoint() {
