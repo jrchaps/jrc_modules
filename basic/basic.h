@@ -26,23 +26,17 @@ typedef double f64;
 
 #define array_length(array) (sizeof(array) / sizeof(array[0]))
 
-#ifdef slice_bounds_checking
-    #ifndef assert
-        #error "You must define assert if using slices with bounds checking."
-    #endif
-#endif
-
 typedef struct slice slice;
 
 struct slice {
-    #ifdef slice_bounds_checking
+    #ifdef runtime_checks
         size_t capacity;
     #endif
     size_t length;
     u8* items;
 };
 
-#ifdef slice_bounds_checking
+#ifdef runtime_checks
     #define slice_make(capacity, length, buffer) { capacity, length, buffer }
 #else
     #define slice_make(capacity, length, buffer) { length, buffer }
@@ -51,3 +45,10 @@ struct slice {
 #define slice_alloc(capacity) slice_make(capacity, 0, (u8[capacity]) { 0 })
 #define slice_literal(...) slice_make(sizeof((u8[]) { __VA_ARGS__ }), sizeof((u8[]) { __VA_ARGS__ }), ((u8[]) { __VA_ARGS__ }))
 #define array_to_slice(array) (slice) slice_make(array_length(array), array_length(array), array)
+
+void trigger_breakpoint(void);
+#if defined runtime_checks
+    #define assert(expression) if (!(expression)) { trigger_breakpoint(); }
+#else
+    #define assert(...)
+#endif

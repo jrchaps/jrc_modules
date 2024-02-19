@@ -1,16 +1,10 @@
-#include "../os/windows.c"
-
-#if defined slice_bounds_checking
-    #define assert(expression) if (!(expression)) { trigger_breakpoint(); }
-#else
-    #define assert(...)
-#endif
-
 #if defined aes128_gcm_x64 
     #include "aes128_gcm_x64.c"
 #elif defined aes128_gcm_unsafe
     #include "aes128_gcm_unsafe.c"
 #endif
+
+#include "../os/windows.c"
 
 typedef struct aes128_bag aes128_bag;
 typedef struct aes128_gcm_bag aes128_gcm_bag;

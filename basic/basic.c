@@ -175,7 +175,7 @@ slice slice_cut(slice in, size_t start_index, size_t end_index) {
     assert(in.capacity >= end_index);
     in.items += start_index;
     in.length = end_index - start_index;
-    #ifdef slice_bounds_checking
+    #ifdef runtime_checks
         in.capacity -= start_index;
     #endif
     return in;

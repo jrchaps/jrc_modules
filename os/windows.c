@@ -3,12 +3,6 @@
 #include <bcrypt.h>
 #pragma comment (lib, "Bcrypt.lib")
 
-#if defined slice_bounds_checking
-    #define assert(expression) if (!(expression)) { DebugBreak(); }
-#else
-    #define assert(...)
-#endif
-
 #include "../basic/basic.c"
 
 void start(void);

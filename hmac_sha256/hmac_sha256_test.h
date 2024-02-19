@@ -1,5 +1,6 @@
-#include "../os/windows.c"
 #include "hmac_sha256.c"
+
+#include "../os/windows.c"
 
 typedef struct test test;
 

@@ -8,7 +8,7 @@ if "%1"=="dev" (
     -march=native ^
     -O0 ^
     -g -Xlinker /INCREMENTAL:NO ^
-    -D slice_bounds_checking ^
+    -D runtime_checks ^
     -D %2 ^
     --config ../clang_build_flags.cfg
 ) 
